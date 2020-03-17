@@ -333,10 +333,16 @@ class InfectionModel:
             tdeath = t0 + self.generate_random_sample(**self.disease_progression[TDEATH])
             self.append_event(Event(tdeath, person_id, TDEATH, person_id, DISEASE_PROGRESSION, t0, self.epidemic_status))
         else:
-            #trecovery =
-            pass
+            if self._expected_case_severity[person_id] == ExpectedCaseSeverity.Mild:
+                trecovery = t0 + 14
+                self.append_event(
+                    Event(trecovery, person_id, TRECOVERY, person_id, DISEASE_PROGRESSION, t0, self.epidemic_status))
+            else:
+                trecovery = t0 + 42
+                self.append_event(
+                    Event(trecovery, person_id, TRECOVERY, person_id, DISEASE_PROGRESSION, t0, self.epidemic_status))
         self._progression_times_dict[person_id] = {ID: person_id, TMINUS1: tminus1, T0: t0, T1: t1, T2: t2,
-                                                   TDEATH: tdeath}
+                                                   TDEATH: tdeath, TRECOVERY: trecovery}
                                                    #TDETECTION: tdetection, TRECOVERY: trecovery, TDEATH: tdeath}
         if initial_infection_status == InfectionStatus.Infectious:
             self.handle_t0(person_id)
@@ -446,7 +452,7 @@ class InfectionModel:
         self.store_bins(simulation_output_dir)
         self.store_semilogy(simulation_output_dir)
         self.store_event_queue(simulation_output_dir)
-        self.doubling_time(simulation_output_dir)
+        #self.doubling_time(simulation_output_dir)
         self.icu_beds(simulation_output_dir)
         self.hospital_beds(simulation_output_dir)
         self.draw_death_age_cohorts(simulation_output_dir)
@@ -455,16 +461,15 @@ class InfectionModel:
         df_r1 = self.df_progression_times
         df_r2 = self.df_infections
         individuals_severity = pd.Series(self._expected_case_severity)
-        logger.info(f'individuals severity composition: \n{individuals_severity.value_counts()/len(individuals_severity)}')
         plt.close()
         cond1 = individuals_severity == ExpectedCaseSeverity.Critical
         cond2 = individuals_severity == ExpectedCaseSeverity.Severe
         cond = np.logical_or(cond1, cond2)
-        logger.info(f'[dbg] {sum(cond1)}, {sum(cond2)}, {sum(cond)}')
+        logger.debug(f'[dbg] {sum(cond1)}, {sum(cond2)}, {sum(cond)}')
         hospitalized = df_r1[df_r1.index.isin(cond.index)]
-        logger.info(f'[dbg] {hospitalized.shape}')
+        logger.debug(f'[dbg] {hospitalized.shape}')
         hospitalized = df_r1[~df_r1.t2.isna()]
-        logger.info(f'[dbg] {hospitalized.shape}')
+        logger.debug(f'[dbg] {hospitalized.shape}')
 
         plus = hospitalized.t2.values
         deceased = hospitalized[~hospitalized.tdeath.isna()]
@@ -608,6 +613,7 @@ class InfectionModel:
         self.event_queue = []
 
         self._affected_people = 0
+        self._active_people = 0
         self._deaths = 0
         # TODO add more online stats like: self._active_people = 0
         # TODO  and think how to better group them, ie namedtuple state_stats?
@@ -621,19 +627,24 @@ class InfectionModel:
         self._max_time = self._params[MAX_TIME]
         self._expected_case_severity = self.draw_expected_case_severity()
 
+    @property
+    def active_people(self):
+        return self._active_people
+
     def run_simulation(self):
         def _inner_loop(iter):
-            with tqdm(total=None) as pbar:
-                while self.pop_and_apply_event():
-                    affected = self.affected_people
-                    memory_use = ps.memory_info().rss / 1024 / 1024
-                    pbar.set_description(f'Time: {self.global_time:.2f} - Affected: {affected}'
-                                         f' - Physical memory use: {memory_use:.2f} MB')
-                    #pbar.set_description(f'Iter: {iter} - Time: {self.global_time:.2f} - Affected: {affected}') # - fear constant: {self.fear("constant"):.3f} - fear household: {self.fear("household"):.3f}')
-                    if affected >= self.stop_simulation_threshold:
-                        logging.info(f"The outbreak reached a high number {self.stop_simulation_threshold}")
-                        return True
-                return False
+            #with tqdm(total=None) as pbar:
+            while self.pop_and_apply_event():
+                affected = self.affected_people
+                #memory_use = ps.memory_info().rss / 1024 / 1024
+                #active = self.active_people
+                #pbar.set_description(f'Time: {self.global_time:.2f} - Affected: {self.affected_people} - Active: {self.active_people}'
+                #                     f' - Physical memory use: {memory_use:.2f} MB')
+                #pbar.set_description(f'Iter: {iter} - Time: {self.global_time:.2f} - Affected: {affected}') # - fear constant: {self.fear("constant"):.3f} - fear household: {self.fear("household"):.3f}')
+                if affected >= self.stop_simulation_threshold:
+                    logging.info(f"The outbreak reached a high number {self.stop_simulation_threshold}")
+                    return True
+            return False
 
         seeds = None
         if isinstance(self._params[RANDOM_SEED], str):
@@ -641,36 +652,38 @@ class InfectionModel:
         elif isinstance(self._params[RANDOM_SEED], int):
             seeds = [self._params[RANDOM_SEED]]
         outbreak_proba = 0.0
-        mean_time_when_outbreak = 0.0
+        mean_time_when_no_outbreak = 0.0
         mean_affected_when_no_outbreak = 0.0
-        outbreaks = 0
+        no_outbreaks = 0
         for i, seed in enumerate(seeds):
             self.parse_random_seed(seed)
             self.setup_simulation()
-            logger.info('Filling queue based on initial conditions...')
+            logger.debug('Filling queue based on initial conditions...')
             self._fill_queue_based_on_initial_conditions()
-            logger.info('Filling queue based on auxiliary functions...')
+            logger.debug('Filling queue based on auxiliary functions...')
             self._fill_queue_based_on_auxiliary_functions()
-            logger.info('Initialization step is done!')
+            logger.debug('Initialization step is done!')
             outbreak = _inner_loop(i + 1)
+            logger.info(f'Time: {self.global_time:.2f} - Affected: {self.affected_people} - Active: {self.active_people}')
             outbreak_proba = (i * outbreak_proba + outbreak) / (i + 1)
-            if outbreak:
-                mean_time_when_outbreak  = (mean_time_when_outbreak * outbreaks + self._global_time) / (outbreaks + 1)
-                outbreaks += 1
-            else:
-                no_outbreaks = i - outbreaks
-                mean_affected_when_no_outbreak = (mean_affected_when_no_outbreak * no_outbreaks + self._affected_people) / (no_outbreaks + 1)
+            if not outbreak:
+                mean_time_when_no_outbreak = (mean_time_when_no_outbreak * no_outbreaks + self._global_time) / (no_outbreaks  + 1)
+                no_outbreaks += 1
+            #else:
+                #no_outbreaks = i - outbreaks
+            #    mean_affected_when_no_outbreak = (mean_affected_when_no_outbreak * no_outbreaks + self._affected_people) / (no_outbreaks + 1)
             if self._params[LOG_OUTPUTS]:
                 self.log_outputs()
         parsed_comment = self._params[COMMENT]
         try:
             parsed_comment = eval(self._params[COMMENT])
-        except:
+        except Exception as e:
+            logger.info(f'problem with parsing the commend: {e}')
             pass
         logger.info(f'\nExperiment id: {self._params[EXPERIMENT_ID]}'
                     f'\nExperiment comment: {parsed_comment}'
                     f'\nOutbreak proba: {outbreak_proba}'
-                    f'\nMean time if outbreak: {mean_time_when_outbreak}'
+                    f'\nMean time if no outbreak: {mean_time_when_no_outbreak}'
                     f'\nMean affected when no outbreak: {mean_affected_when_no_outbreak}')
 
     def append_event(self, event: Event) -> None:
@@ -696,6 +709,7 @@ class InfectionModel:
         }
 
         self._affected_people += 1
+        self._active_people += 1
         self.generate_disease_progression(person_id,
                                           self._df_individuals.loc[person_id],
                                           self.global_time,
@@ -731,7 +745,7 @@ class InfectionModel:
         start = prog_times[T0]
         end = prog_times[T2]
         if end is None:
-            end = start + prog_times[T0] + 14 # TODO: Fix the bug, this should Recovery Time
+            end = start + 14 # TODO: Fix the bug, this should Recovery Time
         total_infection_rate = (end - start) * self.gamma('household')
         household_id = self._df_individuals.loc[id, HOUSEHOLD_ID]
         inhabitants = self._df_households.loc[household_id][ID]
@@ -842,7 +856,13 @@ class InfectionModel:
             elif type_ == TDEATH:
                 if self._infection_status[id] != InfectionStatus.Death:
                     self._infection_status[id] = InfectionStatus.Death
+                    self._active_people -= 1
                     self._deaths += 1
+            elif type_ == TRECOVERY:
+                if self._infection_status[id] != InfectionStatus.Healthy:
+                    if self._infection_status[id] != InfectionStatus.Death:
+                        self._active_people -= 1
+                        self._infection_status[id] = InfectionStatus.Recovered
 
             # TODO: add more important logic
             return True
