@@ -165,7 +165,7 @@ function main()
     Simulation.num_individuals(params) # number of individuals to allocate for
   ); 
 
-  for trajectory_id in 1:num_trajectories
+  @showprogress for trajectory_id in 1:num_trajectories
     Simulation.reset!(state)
     Simulation.initialfeed!(state, num_initial_infected)
 
@@ -173,7 +173,7 @@ function main()
     try
       @time Simulation.simulate!(state, params, callback)
     catch e
-      println(stderr, "iteration ", trajectory_id, " failed $e")
+      println(stderr, "iteration ", trajectory_id, " failed")
     end
     
     GC.gc()
