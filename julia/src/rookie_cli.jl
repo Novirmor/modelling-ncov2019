@@ -170,7 +170,7 @@ function main()
     Simulation.reset!(state)
     Simulation.initialfeed!(state, num_initial_infected)
 
-    callback = DetectionCallback(Simulation.num_individuals(params)) #TODO reset!(cb)
+    callback = DetectionCallback(Simulation.num_individuals(params), max_num_infected) #TODO reset!(cb)
     try
       @time Simulation.simulate!(state, params, callback)
     catch e
