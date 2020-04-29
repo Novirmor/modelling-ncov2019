@@ -100,9 +100,8 @@ const comma = ','
 const float_with_offset(offset, time) = float(offset + time)
 
 function progression_csv_output(path::AbstractString, state::Simulation.SimState, params::Simulation.SimParams)
-  try
-    io = open(path, "w")
-    
+  io = open(path, "w")
+  try    
     # print header
     println(io, "infection_time", comma, "subject_id", comma, "source_id", comma, "contact_kind", comma, "severity", comma, "incubation_time", comma, "mild_time", comma, "severe_time", comma, "recovery_time", comma, "death_time")
           
@@ -125,8 +124,8 @@ function progression_csv_output(path::AbstractString, state::Simulation.SimState
 end
 
 function callback_csv_output(path::AbstractString, cb::DetectionCallback)
+  io = open(path, "w")
   try
-    io = open(path, "w")
     println(io, "subject_id", comma, "detection_time", comma, "detection_type", comma, "tracking_source_id")
     for (i, (time_detection, type_detection, tracking_source)) in enumerate(zip(cb.detection_times, cb.detection_types, cb.tracking_sources))
       if 0 == type_detection
@@ -179,8 +178,8 @@ function main()
     
     GC.gc()
     
-    progression_csv_output(output_prefix*"progressions_$(trajectory).csv", state, params)
-    callback_csv_output(output_prefix*"detections_$(trajectory).csv", callback)
+    progression_csv_output(output_prefix*"progressions_$(trajectory_id).csv", state, params)
+    callback_csv_output(output_prefix*"detections_$(trajectory_id).csv", callback)
   end
 end
 
