@@ -171,7 +171,7 @@ function main()
 
     callback = DetectionCallback(Simulation.num_individuals(params), max_num_infected) #TODO reset!(cb)
     try
-      @time Simulation.simulate!(state, params, callback)
+      Simulation.simulate!(state, params, callback)
     catch e
       println(stderr, "iteration ", trajectory_id, " failed")
     end
